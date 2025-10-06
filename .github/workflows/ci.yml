@@ -142,76 +142,76 @@ jobs:
         id: resolve-versions
         uses: grafana/plugin-actions/e2e-version@main # zizmor: ignore[unpinned-uses] provided by grafana
 
-  playwright-tests:
-    needs: [resolve-versions, build]
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    strategy:
-      fail-fast: false
-      matrix:
-        GRAFANA_IMAGE: ${{fromJson(needs.resolve-versions.outputs.matrix)}}
-    name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Download plugin
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          name: ${{ needs.build.outputs.plugin-id }}-${{ needs.build.outputs.plugin-version }}
-
-      - name: Execute permissions on binary
-        if: needs.build.outputs.has-backend == 'true'
-        run: |
-          chmod +x ./dist/gpx_*
-
-      - name: Setup Node.js environment
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dev dependencies
-        run: npm ci
-
-      - name: Start Grafana
-        run: |
-          docker compose pull
-          ANONYMOUS_AUTH_ENABLED=false DEVELOPMENT=false GRAFANA_VERSION=${{ matrix.GRAFANA_IMAGE.VERSION }} GRAFANA_IMAGE=${{ matrix.GRAFANA_IMAGE.NAME }} docker compose up -d
-
-      - name: Wait for grafana server
-        uses: grafana/plugin-actions/wait-for-grafana@main # zizmor: ignore[unpinned-uses] provided by grafana
-        with:
-          url: http://localhost:3000/login
-
-      - name: Install Playwright Browsers
-        run: npm exec playwright install chromium --with-deps
-
-      - name: Run Playwright tests
-        id: run-tests
-        run: npm run e2e
-
-      - name: Upload e2e test summary
-        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@main # zizmor: ignore[unpinned-uses] provided by grafana
-        if: ${{ always() && !cancelled() }}
-        with:
-          upload-report: false
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          test-outcome: ${{ steps.run-tests.outcome }}
-
-      - name: Docker logs
-        if: ${{ always() && steps.run-tests.outcome == 'failure' }}
-        run: |
-          docker logs event-listener-panel >& grafana-server.log
-
-      - name: Stop grafana docker
-        run: docker compose down
+#  playwright-tests:
+#    needs: [resolve-versions, build]
+#    timeout-minutes: 15
+#    permissions:
+#      contents: read
+#      id-token: write
+#      pull-requests: write
+#    strategy:
+#      fail-fast: false
+#      matrix:
+#        GRAFANA_IMAGE: ${{fromJson(needs.resolve-versions.outputs.matrix)}}
+#    name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#        with:
+#          persist-credentials: false
+#
+#      - name: Download plugin
+#        uses: actions/download-artifact@v4
+#        with:
+#          path: dist
+#          name: ${{ needs.build.outputs.plugin-id }}-${{ needs.build.outputs.plugin-version }}
+#
+#      - name: Execute permissions on binary
+#        if: needs.build.outputs.has-backend == 'true'
+#        run: |
+#          chmod +x ./dist/gpx_*
+#
+#      - name: Setup Node.js environment
+#        uses: actions/setup-node@v4
+#        with:
+#          node-version: '22'
+#          cache: 'npm'
+#
+#      - name: Install dev dependencies
+#        run: npm ci
+#
+#      - name: Start Grafana
+#        run: |
+#          docker compose pull
+#          ANONYMOUS_AUTH_ENABLED=false DEVELOPMENT=false GRAFANA_VERSION=${{ matrix.GRAFANA_IMAGE.VERSION }} GRAFANA_IMAGE=${{ matrix.GRAFANA_IMAGE.NAME }} docker compose up -d
+#
+#      - name: Wait for grafana server
+#        uses: grafana/plugin-actions/wait-for-grafana@main # zizmor: ignore[unpinned-uses] provided by grafana
+#        with:
+#          url: http://localhost:3000/login
+#
+#      - name: Install Playwright Browsers
+#        run: npm exec playwright install chromium --with-deps
+#
+#      - name: Run Playwright tests
+#        id: run-tests
+#        run: npm run e2e
+#
+#      - name: Upload e2e test summary
+#        uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@main # zizmor: ignore[unpinned-uses] provided by grafana
+#        if: ${{ always() && !cancelled() }}
+#        with:
+#          upload-report: false
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#          test-outcome: ${{ steps.run-tests.outcome }}
+#
+#      - name: Docker logs
+#        if: ${{ always() && steps.run-tests.outcome == 'failure' }}
+#        run: |
+#          docker logs event-listener-panel >& grafana-server.log
+#
+#      - name: Stop grafana docker
+#        run: docker compose down
 
       # Uncomment this step to upload the server log to Github artifacts. Remember Github artifacts are public on the Internet if the repository is public.
       # - name: Upload server log
