@@ -1,30 +1,49 @@
-import React, { Suspense, lazy } from 'react';
-import { initPluginTranslations } from '@grafana/i18n';
-import { AppPlugin, type AppRootProps } from '@grafana/data';
-import { LoadingPlaceholder } from '@grafana/ui';
-import type { AppConfigProps } from './components/AppConfig/AppConfig';
-import pluginJson from 'plugin.json';
+import { PanelPlugin } from '@grafana/data';
+import React, { useEffect } from 'react';
 
-await initPluginTranslations(pluginJson.id);
+function ListenerPanel() {
+  useEffect(() => {
+    console.log('🚀 Event Listener Panel mounted (on dashboard)');
 
-const LazyApp = lazy(() => import('./components/App/App'));
-const LazyAppConfig = lazy(() => import('./components/AppConfig/AppConfig'));
+    const handleMessage = (event: MessageEvent) => {
+      console.log('🔔 Message received:', event.data);
 
-const App = (props: AppRootProps) => (
-  <Suspense fallback={<LoadingPlaceholder text="" />}>
-    <LazyApp {...props} />
-  </Suspense>
-);
+      const data = event.data;
+      if (data.type === 'setVariable' && data.variables) {
+        setGrafanaVariables(data.variables);
+      }
+    };
 
-const AppConfig = (props: AppConfigProps) => (
-  <Suspense fallback={<LoadingPlaceholder text="" />}>
-    <LazyAppConfig {...props} />
-  </Suspense>
-);
+    function setGrafanaVariables(vars: Record<string, string | string[]>) {
+      const url = new URL(window.location.href);
+      const params = new URLSearchParams(url.search);
 
-export const plugin = new AppPlugin<{}>().setRootPage(App).addConfigPage({
-  title: 'Configuration',
-  icon: 'cog',
-  body: AppConfig,
-  id: 'configuration',
-});
+      Object.entries(vars).forEach(([k, v]) => {
+        const name = `var-${k}`;
+        if (Array.isArray(v)) {
+          params.delete(name);
+          v.forEach(x => params.append(name, x));
+        } else {
+          params.set(name, v);
+        }
+      });
+
+      const newUrl = `${url.pathname}?${params}${url.hash}`;
+      window.history.pushState({}, '', newUrl);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+
+    window.addEventListener('message', handleMessage);
+    console.log('👂 Listening for postMessage events...');
+
+    return () => {
+      console.log('🛑 Listener Panel unmounted');
+      window.removeEventListener('message', handleMessage);
+    };
+  }, []);
+
+  // hidden visual element
+  return <div style={{ display: 'none' }}>Listener active</div>;
+}
+
+export const plugin = new PanelPlugin(ListenerPanel);
