@@ -36,6 +36,11 @@ function ListenerPanel() {
     window.addEventListener('message', handleMessage);
     console.log('👂 Listening for postMessage events...');
 
+    if (window.parent) {
+      console.log('👋 Sending ready message to parent');
+      window.parent.postMessage({ type: 'grafanaPanelReady' }, '*');
+    }
+
     return () => {
       console.log('🛑 Listener Panel unmounted');
       window.removeEventListener('message', handleMessage);
