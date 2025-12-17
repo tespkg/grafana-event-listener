@@ -39,9 +39,13 @@ function ListenerPanel() {
 
       const newUrl = `${url.pathname}?${params}${url.hash}`;
       window.history.pushState({}, '', newUrl);
+
       // Update last known state to prevent polling from detecting this change
       lastUrl = window.location.href;
       lastVariables = JSON.stringify(getCurrentVariables());
+
+      // Tell Grafana to pick up the new variables
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
 
     function getCurrentVariables(): Record<string, string | string[]> {
