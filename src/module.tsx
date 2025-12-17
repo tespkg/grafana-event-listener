@@ -5,12 +5,21 @@ function ListenerPanel() {
   useEffect(() => {
     console.log('🚀 Event Listener Panel mounted (on dashboard)');
 
+    // Flag to prevent notifying parent of changes they initiated
+    let isSettingFromParent = false;
+
+    // Store the last known URL to detect changes
+    let lastUrl = window.location.href;
+    let lastVariables = JSON.stringify({});
+
     const handleMessage = (event: MessageEvent) => {
       console.log('🔔 Message received:', event.data);
 
       const data = event.data;
       if (data.type === 'setVariable' && data.variables) {
+        isSettingFromParent = true;
         setGrafanaVariables(data.variables);
+        isSettingFromParent = false;
       }
     };
 
@@ -30,7 +39,9 @@ function ListenerPanel() {
 
       const newUrl = `${url.pathname}?${params}${url.hash}`;
       window.history.pushState({}, '', newUrl);
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      // Update last known state to prevent polling from detecting this change
+      lastUrl = window.location.href;
+      lastVariables = JSON.stringify(getCurrentVariables());
     }
 
     function getCurrentVariables(): Record<string, string | string[]> {
@@ -58,6 +69,12 @@ function ListenerPanel() {
     }
 
     function notifyParentOfVariables() {
+      // Don't notify parent if they initiated the change
+      if (isSettingFromParent) {
+        console.log('⏭️ Skipping notification (change from parent)');
+        return;
+      }
+
       const variables = getCurrentVariables();
       if (window.parent) {
         console.log('📤 Sending variable change to parent:', variables);
@@ -73,9 +90,42 @@ function ListenerPanel() {
       notifyParentOfVariables();
     };
 
+    // Initialize lastVariables with actual current variables
+    lastVariables = JSON.stringify(getCurrentVariables());
+
+    // Override pushState and replaceState to detect URL changes made by Grafana
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+
+    window.history.pushState = function(...args) {
+      originalPushState.apply(window.history, args);
+      console.log('🔧 pushState intercepted');
+      handleLocationChange();
+    };
+
+    window.history.replaceState = function(...args) {
+      originalReplaceState.apply(window.history, args);
+      console.log('🔧 replaceState intercepted');
+      handleLocationChange();
+    };
+
+    // Poll for URL changes as a fallback (every 500ms)
+    const urlCheckInterval = setInterval(() => {
+      const currentUrl = window.location.href;
+      const currentVariables = JSON.stringify(getCurrentVariables());
+
+      if (currentUrl !== lastUrl || currentVariables !== lastVariables) {
+        console.log('🔍 URL polling detected change');
+        lastUrl = currentUrl;
+        lastVariables = currentVariables;
+        handleLocationChange();
+      }
+    }, 500);
+
     window.addEventListener('message', handleMessage);
     window.addEventListener('popstate', handleLocationChange);
-    console.log('👂 Listening for postMessage events...');
+    window.addEventListener('hashchange', handleLocationChange);
+    console.log('👂 Listening for postMessage events and URL changes...');
 
     if (window.parent) {
       console.log('👋 Sending ready message to parent');
@@ -89,6 +139,14 @@ function ListenerPanel() {
       console.log('🛑 Listener Panel unmounted');
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+
+      // Restore original history methods
+      window.history.pushState = originalPushState;
+      window.history.replaceState = originalReplaceState;
+
+      // Clear the polling interval
+      clearInterval(urlCheckInterval);
     };
   }, []);
 
