@@ -97,6 +97,52 @@ function ListenerPanel() {
     // Initialize lastVariables with actual current variables
     lastVariables = JSON.stringify(getCurrentVariables());
 
+    // Intercept fetch to detect 401 responses (session expired)
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      try {
+        const response = await originalFetch.apply(this, args);
+
+        // Check for 401 Unauthorized response
+        if (response.status === 401) {
+          console.log('🔐 401 Unauthorized detected, notifying parent to logout');
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'logout',
+              reason: 'sessionExpired'
+            }, '*');
+          }
+        }
+
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    };
+
+    // Intercept XMLHttpRequest for older API calls
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function(method: string, url: string | URL, async?: boolean, username?: string | null, password?: string | null) {
+      return originalXHROpen.call(this, method, url, async ?? true, username, password);
+    };
+
+    XMLHttpRequest.prototype.send = function(body?: Document | XMLHttpRequestBodyInit | null) {
+      this.addEventListener('load', function() {
+        if (this.status === 401) {
+          console.log('🔐 401 Unauthorized detected (XHR), notifying parent to logout');
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'logout',
+              reason: 'sessionExpired'
+            }, '*');
+          }
+        }
+      });
+      return originalXHRSend.call(this, body);
+    };
+
     // Override pushState and replaceState to detect URL changes made by Grafana
     const originalPushState = window.history.pushState;
     const originalReplaceState = window.history.replaceState;
@@ -145,7 +191,10 @@ function ListenerPanel() {
       window.removeEventListener('popstate', handleLocationChange);
       window.removeEventListener('hashchange', handleLocationChange);
 
-      // Restore original history methods
+      // Restore original methods
+      window.fetch = originalFetch;
+      XMLHttpRequest.prototype.open = originalXHROpen;
+      XMLHttpRequest.prototype.send = originalXHRSend;
       window.history.pushState = originalPushState;
       window.history.replaceState = originalReplaceState;
 
