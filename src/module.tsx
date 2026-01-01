@@ -20,13 +20,14 @@ function ListenerPanel() {
         isSettingFromParent = true;
         setGrafanaVariables(data.variables);
         isSettingFromParent = false;
+      } else if (data.type === 'navigate' && data.path) {
+        isSettingFromParent = true;
+        navigateToPath(data.path, data.variables || {});
+        isSettingFromParent = false;
       }
     };
 
-    function setGrafanaVariables(vars: Record<string, string | string[]>) {
-      const url = new URL(window.location.href);
-      const params = new URLSearchParams(url.search);
-
+    function applyVariablesToParams(params: URLSearchParams, vars: Record<string, string | string[]>) {
       Object.entries(vars).forEach(([k, v]) => {
         const name = `var-${k}`;
         if (Array.isArray(v)) {
@@ -36,6 +37,48 @@ function ListenerPanel() {
           params.set(name, v);
         }
       });
+    }
+
+    function navigateToPath(path: string, variables?: Record<string, string | string[]>) {
+      console.log('🧭 Navigating to path:', path, 'with variables:', variables);
+
+      // Ensure path starts with /
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+      // Parse the path to extract pathname, search, and hash
+      const [pathWithoutHash, hash = ''] = normalizedPath.split('#');
+      const [pathname, existingSearch = ''] = pathWithoutHash.split('?');
+
+      // Start with existing query parameters
+      const params = new URLSearchParams(existingSearch);
+
+      // Add/update variables if provided
+      if (variables) {
+        applyVariablesToParams(params, variables);
+      }
+
+      // Build final URL
+      const queryString = params.toString();
+      const finalUrl = `${pathname}${queryString ? '?' + queryString : ''}${hash ? '#' + hash : ''}`;
+
+      console.log('🧭 Final navigation URL:', finalUrl);
+
+      // Use pushState to navigate without page reload (like SPA routing)
+      window.history.pushState({}, '', finalUrl);
+
+      // Update last known state to prevent polling from detecting this change
+      lastUrl = window.location.href;
+      lastVariables = JSON.stringify(variables || {});
+
+      // Trigger popstate event to let Grafana's router handle the navigation
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+
+    function setGrafanaVariables(vars: Record<string, string | string[]>) {
+      const url = new URL(window.location.href);
+      const params = new URLSearchParams(url.search);
+
+      applyVariablesToParams(params, vars);
 
       const newUrl = `${url.pathname}?${params}${url.hash}`;
       window.history.pushState({}, '', newUrl);
