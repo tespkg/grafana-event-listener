@@ -27,9 +27,12 @@ function ListenerPanel() {
       }
     };
 
+    // `from` and `to` are Grafana time range params and live in the URL without the `var-` prefix.
+    const TIME_RANGE_KEYS = new Set(['from', 'to']);
+
     function applyVariablesToParams(params: URLSearchParams, vars: Record<string, string | string[]>) {
       Object.entries(vars).forEach(([k, v]) => {
-        const name = `var-${k}`;
+        const name = TIME_RANGE_KEYS.has(k) ? k : `var-${k}`;
         if (Array.isArray(v)) {
           params.delete(name);
           v.forEach(x => params.append(name, x));
@@ -97,18 +100,25 @@ function ListenerPanel() {
       const variables: Record<string, string | string[]> = {};
 
       params.forEach((value, key) => {
+        let varName: string | null = null;
         if (key.startsWith('var-')) {
-          const varName = key.substring(4);
-          const existing = variables[varName];
-          if (existing) {
-            if (Array.isArray(existing)) {
-              existing.push(value);
-            } else {
-              variables[varName] = [existing, value];
-            }
+          varName = key.substring(4);
+        } else if (TIME_RANGE_KEYS.has(key)) {
+          varName = key;
+        }
+        if (varName === null) {
+          return;
+        }
+
+        const existing = variables[varName];
+        if (existing) {
+          if (Array.isArray(existing)) {
+            existing.push(value);
           } else {
-            variables[varName] = value;
+            variables[varName] = [existing, value];
           }
+        } else {
+          variables[varName] = value;
         }
       });
 
