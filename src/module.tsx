@@ -84,7 +84,9 @@ function ListenerPanel() {
       applyVariablesToParams(params, vars);
 
       const newUrl = `${url.pathname}?${params}${url.hash}`;
-      window.history.pushState({}, '', newUrl);
+      // Use replaceState (not pushState): updating variables on the already-loaded
+      // dashboard is not a navigation, so it must not add a browser history entry.
+      window.history.replaceState({}, '', newUrl);
 
       // Update last known state to prevent polling from detecting this change
       lastUrl = window.location.href;
