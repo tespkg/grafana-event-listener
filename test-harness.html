@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grafana Event Listener — iframe history test harness</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 13px;
+      color: #1c1c1c;
+      background: #f4f5f7;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background: #20262e;
+      color: #fff;
+      padding: 8px 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+    header label { font-size: 12px; display: flex; gap: 4px; align-items: center; }
+    header input[type="text"] { width: 360px; padding: 3px 6px; font-size: 12px; }
+    header select { padding: 3px 6px; font-size: 12px; }
+
+    .tabs { display: flex; gap: 2px; padding: 6px 12px 0; background: #e7e9ec; flex-wrap: wrap; }
+    .tab {
+      padding: 6px 12px; cursor: pointer; border: 1px solid transparent;
+      border-bottom: none; border-radius: 4px 4px 0 0; background: #d2d6db; font-size: 12px;
+    }
+    .tab.active { background: #fff; border-color: #c2c6cc; font-weight: 600; }
+
+    .subtabs { display: flex; gap: 6px; padding: 6px 12px; background: #fff; border-bottom: 1px solid #ddd; min-height: 34px; align-items: center; }
+    .subtab {
+      padding: 4px 10px; cursor: pointer; border: 1px solid #c2c6cc; border-radius: 4px;
+      background: #f0f1f3; font-size: 12px;
+    }
+    .subtab.active { background: #3871dc; color: #fff; border-color: #3871dc; }
+    .subtab .badge { font-size: 10px; opacity: 0.7; margin-left: 4px; }
+
+    .body { flex: 1; display: flex; min-height: 0; }
+    .frameWrap { flex: 1; position: relative; background: #fff; }
+    iframe { width: 100%; height: 100%; border: none; }
+    .placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #888; }
+
+    aside {
+      width: 360px; border-left: 1px solid #ddd; background: #fafbfc;
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .stats { padding: 10px 12px; border-bottom: 1px solid #eee; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat { background: #fff; border: 1px solid #e2e4e8; border-radius: 6px; padding: 8px; }
+    .stat .k { font-size: 10px; text-transform: uppercase; color: #888; letter-spacing: .04em; }
+    .stat .v { font-size: 20px; font-weight: 700; }
+    .stat .v.warn { color: #c0392b; }
+    .actions { padding: 8px 12px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid #eee; }
+    .actions button { font-size: 12px; padding: 4px 8px; cursor: pointer; }
+    .log { flex: 1; overflow: auto; padding: 8px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; }
+    .log .line { white-space: pre-wrap; word-break: break-all; border-bottom: 1px dotted #eee; padding: 2px 0; }
+    .log .nav { color: #2c7; }
+    .log .hist { color: #c0392b; font-weight: 600; }
+    .log .in { color: #2563eb; }
+    .log .out { color: #9333ea; }
+    .log .sys { color: #888; }
+    .hint { padding: 8px 12px; font-size: 11px; color: #555; background: #fff8e1; border-bottom: 1px solid #f0e6c0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🧪 iframe history test</h1>
+    <label>Grafana base:
+      <input id="baseUrl" type="text" value="http://localhost:3000" />
+    </label>
+    <label>Nav mode:
+      <select id="navMode">
+        <option value="src">src attribute (current FE — pollutes history)</option>
+        <option value="replace">location.replace (proposed fix)</option>
+        <option value="postmessage">postMessage navigate (SPA, no reload)</option>
+      </select>
+    </label>
+    <label title="When SPA mode is used, send replace:true so the plugin uses replaceState instead of pushState">
+      <input id="navReplace" type="checkbox" /> navigate replace:true
+    </label>
+  </header>
+
+  <div class="hint">
+    Watch <b>Δ history</b> after each click. <b>src</b> mode grows history on every URL change (incl. sub-tabs that change the dashboard).
+    <b>location.replace</b> should keep it flat. Sub-tabs marked <i>(var only)</i> change a variable without changing the URL — they should never grow history in any mode.
+  </div>
+
+  <div id="tabs" class="tabs"></div>
+  <div id="subtabs" class="subtabs"></div>
+
+  <div class="body">
+    <div class="frameWrap" id="frameWrap">
+      <div class="placeholder" id="placeholder">No dashboard selected</div>
+      <iframe id="grafana" allow="microphone" style="display:none"></iframe>
+    </div>
+    <aside>
+      <div class="stats">
+        <div class="stat"><div class="k">history.length</div><div class="v" id="histLen">—</div></div>
+        <div class="stat"><div class="k">Δ since last nav</div><div class="v" id="histDelta">0</div></div>
+        <div class="stat"><div class="k">URL navigations</div><div class="v" id="navCount">0</div></div>
+        <div class="stat"><div class="k">msgs from iframe</div><div class="v" id="msgCount">0</div></div>
+      </div>
+      <div class="actions">
+        <button id="resetBaseline">Reset Δ baseline</button>
+        <button id="sendVar">Send setVariable</button>
+        <button id="clearLog">Clear log</button>
+      </div>
+      <div class="log" id="log"></div>
+    </aside>
+  </div>
+
+  <script>
+    // ----- Tab model (mirrors DashboardViewer). `variableOnly` sub-tabs do NOT change the URL. -----
+    // UIDs match the locally provisioned dashboards (scripts/gen-dashboards.mjs).
+    const TABS = [
+      { name: 'Daily Production', route: '/d/local-daily', subTabs: [] },
+      {
+        name: 'Work Program and Budget',
+        subTabs: [
+          { label: 'Expenditure', route: '/d/local-wpb-exp' },
+          { label: 'Wells',       route: '/d/local-wpb-wells' },
+          { label: 'Production',  route: '/d/local-wpb-prod' },
+        ],
+      },
+      {
+        name: 'Natural Gas (NG)',
+        subTabs: [
+          { label: 'Natural Gas (NG)', route: '/d/local-ng' },
+          { label: 'NG Reports',       route: '/d/local-ng-reports' },
+          // Sub-tabs that do NOT change the URL — only flip a Grafana variable:
+          { label: 'Summary view', variableOnly: true, variables: { view: 'summary' } },
+          { label: 'Detail view',  variableOnly: true, variables: { view: 'detail' } },
+        ],
+      },
+    ];
+
+    // ----- State -----
+    let activeTab = 0;
+    let activeSub = 0;
+    let baseline = history.length;
+    let navCount = 0;
+    let msgCount = 0;
+    let iframeReady = false;
+    let currentVariables = {
+      treequery: 'trim(block) in ("44","61")',
+      years: 2026,
+      months: '$__all',
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const iframe = $('grafana');
+
+    function log(msg, cls = '') {
+      const el = document.createElement('div');
+      el.className = 'line ' + cls;
+      const t = new Date().toISOString().substr(11, 12);
+      el.textContent = `${t}  ${msg}`;
+      $('log').prepend(el);
+    }
+
+    function refreshStats() {
+      $('histLen').textContent = history.length;
+      const delta = history.length - baseline;
+      const d = $('histDelta');
+      d.textContent = (delta >= 0 ? '+' : '') + delta;
+      d.className = 'v' + (delta > 0 ? ' warn' : '');
+      $('navCount').textContent = navCount;
+      $('msgCount').textContent = msgCount;
+    }
+
+    // ----- Rendering tabs -----
+    function renderTabs() {
+      const tabsEl = $('tabs');
+      tabsEl.innerHTML = '';
+      TABS.forEach((t, i) => {
+        const el = document.createElement('div');
+        el.className = 'tab' + (i === activeTab ? ' active' : '');
+        el.textContent = t.name;
+        el.onclick = () => selectTab(i);
+        tabsEl.appendChild(el);
+      });
+      renderSubTabs();
+    }
+
+    function renderSubTabs() {
+      const subEl = $('subtabs');
+      subEl.innerHTML = '';
+      const subs = TABS[activeTab].subTabs || [];
+      if (!subs.length) {
+        subEl.innerHTML = '<span style="color:#999;font-size:11px">(no sub-tabs)</span>';
+        return;
+      }
+      subs.forEach((s, i) => {
+        const el = document.createElement('div');
+        el.className = 'subtab' + (i === activeSub ? ' active' : '');
+        el.innerHTML = s.label + (s.variableOnly ? '<span class="badge">(var only)</span>' : '');
+        el.onclick = () => selectSub(i);
+        subEl.appendChild(el);
+      });
+    }
+
+    // ----- Resolve the route for the current tab/sub-tab -----
+    function currentRoute() {
+      const tab = TABS[activeTab];
+      const subs = tab.subTabs || [];
+      if (subs.length) {
+        const sub = subs[activeSub];
+        if (sub.variableOnly) return null; // no URL change
+        return sub.route;
+      }
+      return tab.route;
+    }
+
+    function selectTab(i) {
+      activeTab = i;
+      activeSub = 0;
+      renderTabs();
+      navigate();
+    }
+
+    function selectSub(i) {
+      const sub = TABS[activeTab].subTabs[i];
+      activeSub = i;
+      renderSubTabs();
+      if (sub.variableOnly) {
+        // Sub-tab that does NOT change the URL: only push a variable.
+        log(`sub-tab "${sub.label}" → variable-only, no navigation`, 'sys');
+        currentVariables = { ...currentVariables, ...sub.variables };
+        sendVariables();
+        // history must NOT grow here — refresh to prove it
+        setTimeout(refreshStats, 50);
+      } else {
+        navigate();
+      }
+    }
+
+    // ----- Navigation strategies -----
+    function navigate() {
+      const route = currentRoute();
+      const base = $('baseUrl').value.replace(/\/$/, '');
+      if (!route) {
+        $('placeholder').style.display = 'flex';
+        iframe.style.display = 'none';
+        return;
+      }
+      const url = base + route;
+      const mode = $('navMode').value;
+      iframeReady = false;
+      navCount++;
+      $('placeholder').style.display = 'none';
+      iframe.style.display = 'block';
+
+      const before = history.length;
+
+      if (mode === 'src') {
+        log(`NAV [src] → ${route}`, 'nav');
+        iframe.src = url;
+      } else if (mode === 'replace') {
+        log(`NAV [location.replace] → ${route}`, 'nav');
+        if (iframe.contentWindow) {
+          iframe.contentWindow.location.replace(url);
+        } else {
+          iframe.src = url; // first load
+        }
+      } else if (mode === 'postmessage') {
+        // SPA navigation through the plugin's `navigate` handler — requires an already-loaded iframe.
+        if (!iframe.contentWindow || !iframe.src) {
+          log('NAV [postMessage] needs an initial load — using src for first nav', 'sys');
+          iframe.src = url;
+        } else {
+          const replace = $('navReplace').checked;
+          log(`NAV [postMessage navigate${replace ? ' replace' : ''}] → ${route}`, 'nav');
+          iframe.contentWindow.postMessage(
+            { type: 'navigate', path: route, variables: currentVariables, replace },
+            '*'
+          );
+        }
+      }
+
+      // Report history growth shortly after (iframe nav + Grafana URL correction are async).
+      setTimeout(() => {
+        const grew = history.length - before;
+        if (grew > 0) log(`⚠ history grew by +${grew} (now ${history.length})`, 'hist');
+        refreshStats();
+      }, 800);
+    }
+
+    function sendVariables() {
+      if (!iframe.contentWindow) return;
+      log(`→ setVariable ${JSON.stringify(currentVariables)}`, 'out');
+      iframe.contentWindow.postMessage(
+        { type: 'setVariable', variables: currentVariables },
+        '*'
+      );
+    }
+
+    // ----- Receive messages from the plugin (mirrors DashboardViewer.onMessageReceived) -----
+    let firstVariableChange = true;
+    window.addEventListener('message', (event) => {
+      const type = event.data && event.data.type;
+      if (!type) return;
+      msgCount++;
+      if (type === 'grafanaPanelReady') {
+        iframeReady = true;
+        firstVariableChange = true;
+        log('← grafanaPanelReady', 'in');
+        sendVariables();
+      } else if (type === 'variableChanged') {
+        log(`← variableChanged ${JSON.stringify(event.data.variables)}`, 'in');
+        if (firstVariableChange) {
+          firstVariableChange = false; // ignore the first echo, like the real FE
+        } else {
+          // NOTE: real FE re-sends here; that's the loop. We just observe.
+        }
+      } else if (type === 'logout') {
+        log('← logout (sessionExpired)', 'in');
+      }
+      refreshStats();
+    });
+
+    // Track history changes from anywhere (back/forward, iframe, etc.)
+    window.addEventListener('popstate', refreshStats);
+    setInterval(refreshStats, 1000);
+
+    // ----- Buttons -----
+    $('resetBaseline').onclick = () => { baseline = history.length; refreshStats(); log('baseline reset', 'sys'); };
+    $('sendVar').onclick = sendVariables;
+    $('clearLog').onclick = () => { $('log').innerHTML = ''; };
+    $('navMode').onchange = () => log(`nav mode = ${$('navMode').value}`, 'sys');
+
+    // ----- Init -----
+    renderTabs();
+    refreshStats();
+    log('harness ready — pick a tab to load a dashboard', 'sys');
+  </script>
+</body>
+</html>

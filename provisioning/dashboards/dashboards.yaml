@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: 'local-test-dashboards'
+    orgId: 1
+    folder: 'Test'
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      # JSON dashboards live in the json/ subfolder so this provider file is not
+      # itself parsed as a dashboard.
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

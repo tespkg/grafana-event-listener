@@ -1,0 +1,233 @@
+{
+  "uid": "local-daily",
+  "title": "Daily Production (local)",
+  "tags": [
+    "test",
+    "event-listener"
+  ],
+  "timezone": "",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "treequery",
+        "type": "textbox",
+        "label": "Tree query",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "text": "",
+            "value": "",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "name": "years",
+        "type": "custom",
+        "label": "Year",
+        "query": "2023,2024,2025,2026",
+        "current": {
+          "text": "2026",
+          "value": "2026"
+        },
+        "options": [
+          {
+            "text": "2023",
+            "value": "2023",
+            "selected": false
+          },
+          {
+            "text": "2024",
+            "value": "2024",
+            "selected": false
+          },
+          {
+            "text": "2025",
+            "value": "2025",
+            "selected": false
+          },
+          {
+            "text": "2026",
+            "value": "2026",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "name": "months",
+        "type": "custom",
+        "label": "Month",
+        "includeAll": true,
+        "allValue": "$__all",
+        "multi": true,
+        "query": "JAN,FEB,MAR,APR,MAY,JUN,JUL,AUG,SEP,OCT,NOV,DEC",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          },
+          {
+            "text": "JAN",
+            "value": "JAN",
+            "selected": false
+          },
+          {
+            "text": "FEB",
+            "value": "FEB",
+            "selected": false
+          },
+          {
+            "text": "MAR",
+            "value": "MAR",
+            "selected": false
+          },
+          {
+            "text": "APR",
+            "value": "APR",
+            "selected": false
+          },
+          {
+            "text": "MAY",
+            "value": "MAY",
+            "selected": false
+          },
+          {
+            "text": "JUN",
+            "value": "JUN",
+            "selected": false
+          },
+          {
+            "text": "JUL",
+            "value": "JUL",
+            "selected": false
+          },
+          {
+            "text": "AUG",
+            "value": "AUG",
+            "selected": false
+          },
+          {
+            "text": "SEP",
+            "value": "SEP",
+            "selected": false
+          },
+          {
+            "text": "OCT",
+            "value": "OCT",
+            "selected": false
+          },
+          {
+            "text": "NOV",
+            "value": "NOV",
+            "selected": false
+          },
+          {
+            "text": "DEC",
+            "value": "DEC",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "view",
+        "type": "custom",
+        "label": "View",
+        "query": "summary,detail",
+        "current": {
+          "text": "summary",
+          "value": "summary"
+        },
+        "options": [
+          {
+            "text": "summary",
+            "value": "summary",
+            "selected": true
+          },
+          {
+            "text": "detail",
+            "value": "detail",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "event-listener-panel",
+      "title": "Event Listener (bridge)",
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "type": "text",
+      "title": "Current variables",
+      "gridPos": {
+        "h": 3,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### Daily Production (local)\n- **treequery**: `${treequery}`\n- **years**: `${years}`  **months**: `${months}`  **view**: `${view}`"
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Random walk (testdata)",
+      "datasource": {
+        "type": "grafana-testdata-datasource",
+        "uid": "testdata"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-testdata-datasource",
+            "uid": "testdata"
+          },
+          "scenarioId": "random_walk",
+          "seriesCount": 2
+        }
+      ]
+    }
+  ]
+}

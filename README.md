@@ -77,6 +77,37 @@ To learn more about @grafana/scenes usage please refer to the [documentation](ht
    npm run lint:fix
    ```
 
+## Run the postMessage test harness
+
+`test-harness.html` is a standalone parent-page that embeds a Grafana dashboard
+in an iframe and exercises the `setVariable` / `navigate` / `variableChanged`
+bridge. It must be served over HTTP (opening it via `file://` breaks postMessage
+and the iframe), and Grafana must be running locally.
+
+1. Start Grafana with the plugin + local test dashboards:
+
+   ```bash
+   npm run server          # Grafana on http://localhost:3000 (anonymous auth, embedding enabled)
+   ```
+
+2. In another terminal, serve the harness on port 8000:
+
+   ```bash
+   npm run harness         # python3 -m http.server 8000 --bind 0.0.0.0
+   ```
+
+3. Open it in the browser (on WSL, use `localhost` from the Windows browser — not the `file://` path):
+
+   ```
+   http://localhost:8000/test-harness.html
+   ```
+
+The harness defaults to `http://localhost:3000` and the locally provisioned
+dashboards (`provisioning/dashboards/json/`, regenerated via
+`node scripts/gen-dashboards.mjs`). Use the **Nav mode** selector to compare
+`src` vs `location.replace` vs `postMessage navigate`, and watch **Δ history** to
+see which strategies avoid duplicating browser history.
+
 # Distributing your plugin
 
 When distributing a Grafana plugin either within the community or privately the plugin must be signed so the Grafana application can verify its authenticity. This can be done with the `@grafana/sign-plugin` package.
