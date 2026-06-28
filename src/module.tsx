@@ -8,6 +8,14 @@ function ListenerPanel() {
     // Flag to prevent notifying parent of changes they initiated
     let isSettingFromParent = false;
 
+    // While a parent-initiated variable update is settling, Grafana re-syncs the
+    // URL with its OWN history.pushState (template vars, time range). That async
+    // push lands after isSettingFromParent is already reset, adding a redundant
+    // browser-history entry per update. Within this time window we downgrade any
+    // pushState to replaceState so variable updates never grow the back-stack.
+    let collapsePushUntil = 0;
+    const COLLAPSE_WINDOW_MS = 1500;
+
     // Store the last known URL to detect changes
     let lastUrl = window.location.href;
     let lastVariables = JSON.stringify({});
@@ -17,6 +25,7 @@ function ListenerPanel() {
 
       const data = event.data;
       if (data.type === 'setVariable' && data.variables) {
+        collapsePushUntil = Date.now() + COLLAPSE_WINDOW_MS;
         isSettingFromParent = true;
         setGrafanaVariables(data.variables);
         isSettingFromParent = false;
@@ -203,12 +212,35 @@ function ListenerPanel() {
     const originalReplaceState = window.history.replaceState;
 
     window.history.pushState = function(...args) {
-      originalPushState.apply(window.history, args);
-      console.log('🔧 pushState intercepted');
+      // DIAGNOSTIC: log who called pushState, the target URL, and the collapse state.
+      // Remove once the duplicate-history source is identified.
+      const inCollapseWindow = Date.now() < collapsePushUntil;
+      console.groupCollapsed(
+        `🔧 pushState called → ${String(args[2] ?? '(no url)')} | collapse=${inCollapseWindow} | history.length=${window.history.length}`
+      );
+      console.trace('pushState caller stack');
+      console.groupEnd();
+
+      // During the collapse window, treat Grafana's own variable/time-range
+      // pushState as a replaceState so it doesn't add a duplicate history entry.
+      if (inCollapseWindow) {
+        console.log('🔧 pushState collapsed to replaceState (parent-driven update)');
+        originalReplaceState.apply(window.history, args);
+      } else {
+        originalPushState.apply(window.history, args);
+        console.log('🔧 pushState intercepted');
+      }
       handleLocationChange();
     };
 
     window.history.replaceState = function(...args) {
+      // DIAGNOSTIC: log who called replaceState. Remove once diagnosed.
+      console.groupCollapsed(
+        `🔧 replaceState called → ${String(args[2] ?? '(no url)')} | history.length=${window.history.length}`
+      );
+      console.trace('replaceState caller stack');
+      console.groupEnd();
+
       originalReplaceState.apply(window.history, args);
       console.log('🔧 replaceState intercepted');
       handleLocationChange();
