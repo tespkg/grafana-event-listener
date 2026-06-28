@@ -31,8 +31,16 @@ function ListenerPanel() {
         setGrafanaVariables(data.variables);
         isSettingFromParent = false;
       } else if (data.type === 'navigate' && data.path) {
+        // `replace: true` routes Grafana's SPA without adding a browser-history
+        // entry — use it for tab-style switches that should not grow the
+        // back-stack. Default (omitted/false) keeps the old pushState behavior
+        // for genuine navigations.
+        const replace = data.replace === true;
+        // Open the collapse window so Grafana's own post-navigation URL re-sync
+        // (and the poller) don't add/echo extra entries while routing settles.
+        parentUpdateUntil = Date.now() + PARENT_UPDATE_WINDOW_MS;
         isSettingFromParent = true;
-        navigateToPath(data.path, data.variables || {});
+        navigateToPath(data.path, data.variables || {}, replace);
         isSettingFromParent = false;
       }
     };
@@ -52,8 +60,8 @@ function ListenerPanel() {
       });
     }
 
-    function navigateToPath(path: string, variables?: Record<string, string | string[]>) {
-      console.log('🧭 Navigating to path:', path, 'with variables:', variables);
+    function navigateToPath(path: string, variables?: Record<string, string | string[]>, replace = false) {
+      console.log('🧭 Navigating to path:', path, 'with variables:', variables, 'replace:', replace);
 
       // Ensure path starts with /
       const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -76,8 +84,13 @@ function ListenerPanel() {
 
       console.log('🧭 Final navigation URL:', finalUrl);
 
-      // Use pushState to navigate without page reload (like SPA routing)
-      window.history.pushState({}, '', finalUrl);
+      // SPA-route without a page reload. replaceState for tab-style switches
+      // (no new history entry); pushState for genuine navigations.
+      if (replace) {
+        window.history.replaceState({}, '', finalUrl);
+      } else {
+        window.history.pushState({}, '', finalUrl);
+      }
 
       // Update last known state to prevent polling from detecting this change
       lastUrl = window.location.href;
