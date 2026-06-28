@@ -8,13 +8,14 @@ function ListenerPanel() {
     // Flag to prevent notifying parent of changes they initiated
     let isSettingFromParent = false;
 
-    // While a parent-initiated variable update is settling, Grafana re-syncs the
-    // URL with its OWN history.pushState (template vars, time range). That async
-    // push lands after isSettingFromParent is already reset, adding a redundant
-    // browser-history entry per update. Within this time window we downgrade any
-    // pushState to replaceState so variable updates never grow the back-stack.
-    let collapsePushUntil = 0;
-    const COLLAPSE_WINDOW_MS = 1500;
+    // Time window marking that a parent-initiated variable update is still
+    // settling. isSettingFromParent only covers the synchronous call; Grafana's
+    // URL re-sync and the 500ms poller fire AFTER it resets. During this window
+    // we (a) downgrade any history.pushState to replaceState so variable updates
+    // never grow the back-stack, and (b) suppress variableChanged notifications
+    // so we don't echo the parent's own change back and start an infinite loop.
+    let parentUpdateUntil = 0;
+    const PARENT_UPDATE_WINDOW_MS = 1500;
 
     // Store the last known URL to detect changes
     let lastUrl = window.location.href;
@@ -25,7 +26,7 @@ function ListenerPanel() {
 
       const data = event.data;
       if (data.type === 'setVariable' && data.variables) {
-        collapsePushUntil = Date.now() + COLLAPSE_WINDOW_MS;
+        parentUpdateUntil = Date.now() + PARENT_UPDATE_WINDOW_MS;
         isSettingFromParent = true;
         setGrafanaVariables(data.variables);
         isSettingFromParent = false;
@@ -137,9 +138,19 @@ function ListenerPanel() {
     }
 
     function notifyParentOfVariables() {
-      // Don't notify parent if they initiated the change
+      // Don't notify parent if they initiated the change (synchronous case).
       if (isSettingFromParent) {
         console.log('⏭️ Skipping notification (change from parent)');
+        return;
+      }
+
+      // Don't notify parent for the ASYNC tail of a parent-initiated change:
+      // Grafana re-syncs the URL (and the 500ms poller fires) after the
+      // synchronous flag has already reset. Emitting variableChanged here is
+      // what creates the infinite echo loop (parent re-sends setVariable →
+      // we re-emit → ...), each round adding a duplicate history entry.
+      if (Date.now() < parentUpdateUntil) {
+        console.log('⏭️ Skipping notification (parent update still settling)');
         return;
       }
 
@@ -214,7 +225,7 @@ function ListenerPanel() {
     window.history.pushState = function(...args) {
       // DIAGNOSTIC: log who called pushState, the target URL, and the collapse state.
       // Remove once the duplicate-history source is identified.
-      const inCollapseWindow = Date.now() < collapsePushUntil;
+      const inCollapseWindow = Date.now() < parentUpdateUntil;
       console.groupCollapsed(
         `🔧 pushState called → ${String(args[2] ?? '(no url)')} | collapse=${inCollapseWindow} | history.length=${window.history.length}`
       );
